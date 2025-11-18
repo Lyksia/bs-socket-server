@@ -1,0 +1,151 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================
+// ENUMS
+// ===========================
+
+enum SessionType {
+  SHARED // Session locale (host display + joueurs mobile)
+  ONLINE // Session distante (tous sur mobile)
+}
+
+enum SessionStatus {
+  WAITING // En attente de joueurs
+  READY_CHECK // Vérification des ready-ups
+  ACTIVE // Jeu en cours
+  FINISHED // Jeu terminé
+  CANCELLED // Jeu annulé
+}
+
+enum PlayerStatus {
+  ACTIVE // Joueur actif
+  DISCONNECTED // Déconnecté (grace period 5min)
+  EXCLUDED // Exclu par le host
+}
+
+enum QuestionType {
+  CAPITAL // Question sur les capitales
+  FLAG // Question sur les drapeaux
+  DEMONYM // Question sur les habitants
+}
+
+enum Difficulty {
+  EASY // Niveau facile
+  MEDIUM // Niveau moyen
+  HARD // Niveau difficile
+}
+
+// ===========================
+// MODELS
+// ===========================
+
+model Session {
+  id              String        @id @default(uuid())
+  code            String        @unique @db.VarChar(6)
+  type            SessionType
+  duration        Int // 20, 50, ou 100 questions
+  difficulty      Difficulty
+  status          SessionStatus @default(WAITING)
+  currentQuestion Int           @default(0)
+  createdAt       DateTime      @default(now())
+  expiresAt       DateTime
+
+  // Pour Mode Partagé (SHARED): identifiant du navigateur TV/hôte
+  hostDeviceId String? @db.VarChar(255)
+
+  // Pour Mode En Ligne (ONLINE): ID du joueur créateur/gérant
+  creatorId String?
+
+  // Relations
+  players   Player[]
+  questions SessionQuestion[]
+  creator   Player?           @relation("SessionCreator", fields: [creatorId], references: [id], onDelete: SetNull)
+
+  @@index([code])
+  @@index([status])
+  @@index([creatorId])
+}
+
+model Player {
+  id            String       @id @default(uuid())
+  sessionId     String
+  userProfileId String       @db.VarChar(255) // ID du profil localStorage
+  nickname      String       @db.VarChar(50)
+  avatar        String       @db.VarChar(10) // Emoji
+  isReady       Boolean      @default(false)
+  status        PlayerStatus @default(ACTIVE)
+  joinedAt      DateTime     @default(now())
+  score         Int          @default(0)
+
+  // Relations
+  session         Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  answers         Answer[]
+  createdSessions Session[] @relation("SessionCreator") // Sessions créées en Mode ONLINE
+
+  @@index([sessionId])
+  @@index([userProfileId])
+}
+
+model Question {
+  id           String       @id @default(uuid())
+  type         QuestionType
+  country      String       @db.VarChar(100)
+  questionText String       @db.Text
+  answers      Json // Array de 4 strings
+  correctIndex Int // index de la bonne réponse (0-3)
+  imageUrl     String?      @db.Text // URL du drapeau ou image (optionnel)
+  difficulty   Int // 1 (Easy) | 2 (Medium) | 3 (Hard)
+  tags         Json // Array de tags (ex: ["europe", "western-europe"])
+  createdAt    DateTime     @default(now())
+
+  // Relations
+  sessions SessionQuestion[]
+
+  @@index([difficulty])
+  @@index([type])
+  @@index([difficulty, type])
+}
+
+model SessionQuestion {
+  id          String    @id @default(uuid())
+  sessionId   String
+  questionId  String
+  orderIndex  Int // ordre d'apparition dans la session
+  displayedAt DateTime? // timestamp d'affichage
+
+  // Relations
+  session  Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id])
+  answers  Answer[]
+
+  @@unique([sessionId, orderIndex])
+  @@index([sessionId])
+}
+
+model Answer {
+  id                String   @id @default(uuid())
+  playerId          String
+  sessionQuestionId String
+  answerIndex       Int // index de la réponse choisie (0-3)
+  responseTime      Int // millisecondes depuis le signal GO
+  isCorrect         Boolean
+  points            Int // points attribués (10, 8, 5, 1, ou 0)
+  createdAt         DateTime @default(now())
+
+  // Relations
+  player          Player          @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  sessionQuestion SessionQuestion @relation(fields: [sessionQuestionId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([sessionQuestionId])
+}
