@@ -5,9 +5,7 @@ yarn.lock
 pnpm-lock.yaml
 
 # Environment variables
-.env
-.env.local
-.env.production
+.env*
 
 # Prisma
 prisma/migrations/
@@ -29,3 +27,5 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+*.conf
