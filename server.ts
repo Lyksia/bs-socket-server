@@ -1,3 +1,7 @@
+// Charger les variables d'environnement AVANT toute autre import
+import { config } from "dotenv";
+config({ path: ".env.local" });
+
 import { createServer } from "http";
 import { initSocketServer } from "./init";
 
